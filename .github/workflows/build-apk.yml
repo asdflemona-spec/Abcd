@@ -24,11 +24,11 @@ jobs:
         run: |
           rm -rf android-project
           mkdir android-project
-          unzip -q MyPicksGalaxy_v3.zip -d android-project
-          echo "=== ZIP contents ==="
+          unzip -q MyPicksGalaxy_v3_fixed.zip -d android-project
+          echo "=== Project files ==="
           find android-project -maxdepth 3 -type f | head -100
 
-      - name: Build APK
+      - name: Find and build Android project
         run: |
           GRADLEW=$(find android-project -type f -name gradlew | head -1)
 
@@ -38,15 +38,18 @@ jobs:
           fi
 
           PROJECT_DIR=$(dirname "$GRADLEW")
-          echo "Project found at: $PROJECT_DIR"
+
+          echo "Gradle wrapper: $GRADLEW"
+          echo "Project directory: $PROJECT_DIR"
 
           chmod +x "$GRADLEW"
           cd "$PROJECT_DIR"
 
           ./gradlew assembleDebug -Pkotlin.jvm.target.validation.mode=warning
 
-      - name: Find APK
+      - name: Find generated APK
         run: |
+          echo "=== Generated APK ==="
           find android-project -type f -name "*.apk" -print
 
       - name: Upload APK
