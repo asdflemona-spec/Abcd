@@ -25,40 +25,26 @@ jobs:
           mkdir android-project
           unzip -q MyPicksGalaxy.zip -d android-project
 
-      - name: Fix JVM target
+      - name: Patch project
         run: |
           PROJECT_DIR=$(find android-project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -printf '%h\n' | head -1)
           echo "Project: $PROJECT_DIR"
 
-          BUILD_FILE="$PROJECT_DIR/app/build.gradle.kts"
+          # Java/Kotlin 모두 JVM 17 사용
+          find "$PROJECT_DIR" -name "*.gradle.kts" -type f -exec \
+            sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' {} +
 
-          if [ -f "$BUILD_FILE" ]; then
-            python3 - "$BUILD_FILE" <<'PY'
-          import sys
-          from pathlib import Path
+          # Wikimedia가 //upload.wikimedia.org/... 형태 URL을 반환하는
+          # 경우에도 HTTPS 이미지로 정상 표시되도록 보정
+          find "$PROJECT_DIR/app/src" -name "*.kt" -type f -exec \
+            sed -i 's#model = item.imageUrl#model = if (item.imageUrl.startsWith("//")) "https:" + item.imageUrl else item.imageUrl#g' {} + || true
 
-          p = Path(sys.argv[1])
-          s = p.read_text()
+          # 혹시 http URL이 있으면 https로 변경
+          find "$PROJECT_DIR/app/src" -name "*.kt" -type f -exec \
+            sed -i 's#"http://upload.wikimedia.org#"https://upload.wikimedia.org#g' {} + || true
 
-          marker = "android {"
-          fix = """
-              compileOptions {
-                  sourceCompatibility = JavaVersion.VERSION_17
-                  targetCompatibility = JavaVersion.VERSION_17
-              }
-          """
-
-          if "sourceCompatibility" not in s:
-              s = s.replace(marker, marker + fix, 1)
-          else:
-              s = s.replace(
-                  "JavaVersion.VERSION_1_8",
-                  "JavaVersion.VERSION_17"
-              )
-
-          p.write_text(s)
-          PY
-          fi
+          echo "=== Patched image references ==="
+          grep -R "model =" "$PROJECT_DIR/app/src" || true
 
       - name: Build APK
         run: |
@@ -74,6 +60,7 @@ jobs:
 
       - name: Collect APK
         run: |
+          rm -rf apk-output
           mkdir apk-output
           find android-project -type f -name "*.apk" -exec cp {} apk-output/ \;
           ls -lh apk-output
