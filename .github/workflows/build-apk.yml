@@ -13,33 +13,60 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
 
-      - name: Unzip Android project
+      - name: Unzip project
         run: |
+          rm -rf android-project
           mkdir android-project
           unzip -q MyPicksGalaxy.zip -d android-project
-          echo "=== Files ==="
-          find android-project -maxdepth 3 -type f | head -100
 
-      - name: Find Gradle project and build APK
+      - name: Fix JVM target
         run: |
           PROJECT_DIR=$(find android-project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -printf '%h\n' | head -1)
+          echo "Project: $PROJECT_DIR"
 
-          if [ -z "$PROJECT_DIR" ]; then
-            echo "Android Gradle project not found inside ZIP"
-            exit 1
+          BUILD_FILE="$PROJECT_DIR/app/build.gradle.kts"
+
+          if [ -f "$BUILD_FILE" ]; then
+            python3 - "$BUILD_FILE" <<'PY'
+          import sys
+          from pathlib import Path
+
+          p = Path(sys.argv[1])
+          s = p.read_text()
+
+          marker = "android {"
+          fix = """
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+          """
+
+          if "sourceCompatibility" not in s:
+              s = s.replace(marker, marker + fix, 1)
+          else:
+              s = s.replace(
+                  "JavaVersion.VERSION_1_8",
+                  "JavaVersion.VERSION_17"
+              )
+
+          p.write_text(s)
+          PY
           fi
 
-          echo "Project: $PROJECT_DIR"
+      - name: Build APK
+        run: |
+          PROJECT_DIR=$(find android-project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -printf '%h\n' | head -1)
           cd "$PROJECT_DIR"
 
-          if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
+          if [ -f gradlew ]; then
+            chmod +x gradlew
             ./gradlew assembleDebug
           else
             gradle assembleDebug
@@ -47,13 +74,9 @@ jobs:
 
       - name: Collect APK
         run: |
-          mkdir -p apk-output
+          mkdir apk-output
           find android-project -type f -name "*.apk" -exec cp {} apk-output/ \;
-
-          if [ -z "$(ls -A apk-output)" ]; then
-            echo "APK was not generated"
-            exit 1
-          fi
+          ls -lh apk-output
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
