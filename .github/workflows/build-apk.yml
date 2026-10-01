@@ -1,0 +1,62 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Unzip Android project
+        run: |
+          mkdir android-project
+          unzip -q MyPicksGalaxy.zip -d android-project
+          echo "=== Files ==="
+          find android-project -maxdepth 3 -type f | head -100
+
+      - name: Find Gradle project and build APK
+        run: |
+          PROJECT_DIR=$(find android-project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -printf '%h\n' | head -1)
+
+          if [ -z "$PROJECT_DIR" ]; then
+            echo "Android Gradle project not found inside ZIP"
+            exit 1
+          fi
+
+          echo "Project: $PROJECT_DIR"
+          cd "$PROJECT_DIR"
+
+          if [ -f "./gradlew" ]; then
+            chmod +x ./gradlew
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
+
+      - name: Collect APK
+        run: |
+          mkdir -p apk-output
+          find android-project -type f -name "*.apk" -exec cp {} apk-output/ \;
+
+          if [ -z "$(ls -A apk-output)" ]; then
+            echo "APK was not generated"
+            exit 1
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyPicksGalaxy-APK
+          path: apk-output/*.apk
