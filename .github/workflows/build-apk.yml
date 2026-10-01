@@ -1,88 +1,40 @@
 name: Build Android APK
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
       - name: Unzip project
         run: |
           rm -rf android-project
           mkdir android-project
-          unzip -q MyPicksGalaxy.zip -d android-project
+          unzip -q MyPicksGalaxy_v3.zip -d android-project
 
-      - name: Patch project
-        run: |
-          PROJECT_DIR=$(find android-project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -printf '%h\n' | head -1)
-
-          echo "Project: $PROJECT_DIR"
-
-          # Try to update common Java 8 declarations to Java 17
-          find "$PROJECT_DIR" -name "*.gradle.kts" -type f -exec \
-            sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' {} +
-
-          find "$PROJECT_DIR" -name "*.gradle" -type f -exec \
-            sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' {} +
-
-          # Fix protocol-relative Wikimedia image URLs
-          find "$PROJECT_DIR/app/src" -name "*.kt" -type f -exec \
-            sed -i 's#model = item.imageUrl#model = if (item.imageUrl.startsWith("//")) "https:" + item.imageUrl else item.imageUrl#g' {} + || true
-
-          # Force Wikimedia HTTP URLs to HTTPS
-          find "$PROJECT_DIR/app/src" -name "*.kt" -type f -exec \
-            sed -i 's#"http://upload.wikimedia.org#"https://upload.wikimedia.org#g' {} + || true
-
-          echo "=== Gradle files ==="
-          find "$PROJECT_DIR" \( -name "*.gradle" -o -name "*.gradle.kts" \) -print
-
-          echo "=== Image model references ==="
-          grep -R "model =" "$PROJECT_DIR/app/src" || true
+      - name: Make Gradle executable
+        run: chmod +x android-project/gradlew
 
       - name: Build APK
-        run: |
-          PROJECT_DIR=$(find android-project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -printf '%h\n' | head -1)
-
-          cd "$PROJECT_DIR"
-
-          if [ -f gradlew ]; then
-            chmod +x gradlew
-            ./gradlew assembleDebug -Pkotlin.jvm.target.validation.mode=warning
-          else
-            gradle assembleDebug -Pkotlin.jvm.target.validation.mode=warning
-          fi
-
-      - name: Collect APK
-        run: |
-          rm -rf apk-output
-          mkdir -p apk-output
-
-          find android-project -type f -name "*.apk" -exec cp {} apk-output/ \;
-
-          echo "=== APK files ==="
-          ls -lh apk-output
-
-          if [ -z "$(ls -A apk-output)" ]; then
-            echo "APK was not generated"
-            exit 1
-          fi
+        working-directory: android-project
+        run: ./gradlew assembleDebug -Pkotlin.jvm.target.validation.mode=warning
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MyPicksGalaxy-APK
-          path: apk-output/*.apk
-          if-no-files-found: error
+          path: android-project/app/build/outputs/apk/debug/app-debug.apk
