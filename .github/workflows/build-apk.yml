@@ -20,13 +20,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Unzip project
+      - name: Unzip V4 project
         run: |
           rm -rf android-project
           mkdir android-project
-          unzip -q MyPicksGalaxy_v3_fixed.zip -d android-project
-          echo "=== Project files ==="
-          find android-project -maxdepth 3 -type f | head -100
+          unzip -q MyPicksGalaxy_v4.zip -d android-project
+
+          echo "=== ZIP contents ==="
+          find android-project -maxdepth 4 -type f | head -100
 
       - name: Find and build Android project
         run: |
@@ -55,6 +56,6 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: MyPicksGalaxy-APK
+          name: MyPicksGalaxy-V4-APK
           path: android-project/**/*.apk
           if-no-files-found: error
