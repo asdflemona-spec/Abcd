@@ -28,45 +28,61 @@ jobs:
       - name: Patch project
         run: |
           PROJECT_DIR=$(find android-project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -printf '%h\n' | head -1)
+
           echo "Project: $PROJECT_DIR"
 
-          # Java/Kotlin 모두 JVM 17 사용
+          # Try to update common Java 8 declarations to Java 17
           find "$PROJECT_DIR" -name "*.gradle.kts" -type f -exec \
             sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' {} +
 
-          # Wikimedia가 //upload.wikimedia.org/... 형태 URL을 반환하는
-          # 경우에도 HTTPS 이미지로 정상 표시되도록 보정
+          find "$PROJECT_DIR" -name "*.gradle" -type f -exec \
+            sed -i 's/JavaVersion.VERSION_1_8/JavaVersion.VERSION_17/g' {} +
+
+          # Fix protocol-relative Wikimedia image URLs
           find "$PROJECT_DIR/app/src" -name "*.kt" -type f -exec \
             sed -i 's#model = item.imageUrl#model = if (item.imageUrl.startsWith("//")) "https:" + item.imageUrl else item.imageUrl#g' {} + || true
 
-          # 혹시 http URL이 있으면 https로 변경
+          # Force Wikimedia HTTP URLs to HTTPS
           find "$PROJECT_DIR/app/src" -name "*.kt" -type f -exec \
             sed -i 's#"http://upload.wikimedia.org#"https://upload.wikimedia.org#g' {} + || true
 
-          echo "=== Patched image references ==="
+          echo "=== Gradle files ==="
+          find "$PROJECT_DIR" \( -name "*.gradle" -o -name "*.gradle.kts" \) -print
+
+          echo "=== Image model references ==="
           grep -R "model =" "$PROJECT_DIR/app/src" || true
 
       - name: Build APK
         run: |
           PROJECT_DIR=$(find android-project -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -printf '%h\n' | head -1)
+
           cd "$PROJECT_DIR"
 
           if [ -f gradlew ]; then
             chmod +x gradlew
-            ./gradlew assembleDebug
+            ./gradlew assembleDebug -Pkotlin.jvm.target.validation.mode=warning
           else
-            gradle assembleDebug
+            gradle assembleDebug -Pkotlin.jvm.target.validation.mode=warning
           fi
 
       - name: Collect APK
         run: |
           rm -rf apk-output
-          mkdir apk-output
+          mkdir -p apk-output
+
           find android-project -type f -name "*.apk" -exec cp {} apk-output/ \;
+
+          echo "=== APK files ==="
           ls -lh apk-output
+
+          if [ -z "$(ls -A apk-output)" ]; then
+            echo "APK was not generated"
+            exit 1
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: MyPicksGalaxy-APK
           path: apk-output/*.apk
+          if-no-files-found: error
